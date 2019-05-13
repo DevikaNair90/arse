@@ -1,0 +1,335 @@
+---
+title: "arse_walkthrough"
+author:
+- Nathaniel Ratcliff
+- Devika Nair
+- Joshua Goldstein
+date: "5/12/2019"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{arse_walkthrough}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## Introduction
+
+This document is intended to serve as a step-by-step guide to using the area of resilience 
+to stress event (ARSE) method of quantifying the resilience process using the 'arse' R package. 
+This guide is a companion to a paper introducing the ARSE method (Ratcliff, Nair, & Goldstein, 
+*under review*). For ARSE, the resilience process is conceptualized as: for a given ‘y’ outcome 
+occurring over time, resilience is characterized by the function of robustness (i.e., the degree of 
+negative departure from the baseline of y) and rapidity (i.e., time to the return to baseline of y) 
+in relation to the incursion of a stress event on an entity. To use this method, three things must be 
+in place: (a) a baseline value (before the stress event) of a variable of interest 'y' needs to be known, 
+(b) an incursion of a stress event needs to occur on an entity (e.g., individual, group), and (c) the 
+variable of interest 'y' needs to be measured repeatedly after the incursion of a stress event. Thus, 
+ARSE is the function of how much the variable 'y' negatively diverges from baseline levels after a stress 
+event (i.e., robustness) and the time it takes 'y' to return to baseline levels (i.e., rapidity). The 
+combination of robustness and rapidity form a series of points that can be connected into an irregular 
+polygon from which an area can be derived. It is this area, ARSE, that is indicative of how much resilience 
+is demonstrated to a stress event where smaller values of ARSE indicate better resilience and larger values 
+indicate poor resilience. It should be noted that we refer to decreases as a default way of discussing departures 
+from baseline levels, however, for variables in which higher numbers are characterized as less desirable 
+(e.g., blood pressure), negative departures from the baseline would be increases from the baseline. The ARSE 
+functions discussed below have an option 'yinvert' that accommodate cases in which higher values are not 
+desirable. For the purposes of this walkthrough, we assume that higher values are more desirable and that 
+decreases from the baseline level are not. 
+
+The following presents a step-by-step guide to analyzing ARSE using a fictitious data set. 
+
+## Installation of arse R Package
+
+To install arse, use `install.packages("arse")` in R or RStudio. Alternatively, the development version of the
+arse package can be downloaded from github using `devtools::install_github("nr3xe/arse")`. 
+
+## Load arse Package, Dependent Packages (dplyr, pracma), and the 'stress_appraisal' Data Set
+
+```{r setup}
+# Required R packages that need to be loaded
+library(arse)
+library(dplyr)
+library(pracma)
+```
+
+## Description of stress_appraisal Data Set
+
+A Fictitious data set was used to demonstrate the calculation of ARSE In this data set, there are 50 fictitious 
+"subjects" split into two groups with 25 members each (i.e., 'group' variable). The *Control* condition represents 
+subjects in which training was not given before a stress event. In the *Appraisal_Training* condition, subjects 
+were given a training to help cognitively reappraise a stressful situation and think of strategies to adapt 
+to a stressor. Before random assignment to group condition, a baseline **'tby'** is measured on the subject's 
+ability to place 100 colored-pegs in a specified patterned grid in one minute. Following baseline measurement, 
+a stress event occurs for all subjects where they are asked to dip their hand in a bath of ice cold water for one 
+minute (or as long as they can stand). Following the stress event, the subjects are asked to perform the peg task 
+four more times with different patterns to match. subjects perform the peg task at three minute intervals. The fourth 
+time the subject performs the task **'t4y'** represents the subject's end state at the end of the fictitious experiment. 
+In the data set, **'t#x'** values represent time on the x-axis using x-coordinates.
+
+```{r}
+# Dataframe of stress_appraisal data set
+head(stress_appraisal, 10) # shows the first ten rows of the 'stress_appraisal' ficticious data set found in the arse package
+```
+
+### stress_appraisal Layout
+
+Viewed above, the stress_appraisal data set has 12 columns and 50 rows that represent individual subjects. Each of
+the columns represent the following  
+
+- subj = subject number
+- group = experimental condition
+  * Control = Control condition receiving no training
+  * Appraisal_Training condition = Experimental condition receiving training
+- tbx = x-coordinate of baseline measure of peg performance
+- t1x--t4x = x-coordinates of additional measured peg performance measure (t4x = end state x-coordinate)
+- tby = baseline measure of peg performance (0--100 scale)
+- t1y--t4y = y-coordinates of additional measured peg performance measure (t4y = end state y-coordinate)
+
+### Data Organization
+
+To organize the data set, the baseline x-coordinate should be the first column of x-coordinates. Accordingly,
+the baseline y-coordinate value should be the first column of the y-coordinates. The functions within the `arse`
+package will default to the first column of y-coordinates as the baseline value. 
+    
+## ARSE Plot of Subject #1
+
+To plot an example case of ARSE, the `plot_arse` function provides a rough picture of the pattern of resilience. 
+To plot a single case of arse, the `plot_arse` function requires a vector of x-coordinates and a vector of 
+y-coordinates. The baseline value defaults to the first column of the y-coordinates but can be specified with 
+the `ybase = ` argument. Below, we indicate where in our dataframe the x- and y-coordinates are located and enter
+them as vectors using the `as.integer()` prefix. The lower and upper limits of the displayed scale are specified
+using the `ll =` and `ul =` respectively (a best practice is to indicate the full range of possible values for the 
+scale of 'y' or reflect the full range of observed values).
+
+```{r}
+# Plot of ARSE for single subject
+plot_arse(xcoord = as.integer(stress_appraisal[1,3:7]), ycoord = as.integer(stress_appraisal[1, 8:12]), 
+          ll=0, ul=100, xlab = "Trial Number", ylab = "Number of Pegs")
+```
+
+### Description of Subj #1 Plot
+
+From the plot above, you can see that the baseline is 64 and that, in this case, resilience was not achieved since the end state is below the baseline at a value of 47. 
+
+## Calculating ARSE for Subject #1
+
+To calculate ARSE from our example case, the `arse` function is used. The `arse` function requires three arguments:
+data, xcoord, and ycoord. For data, indicate the dataframe that is being used, in our example this would be 
+`stress_appraisal`. For `xcoord`, a dataframe of x-coordinates is required with the first column having the 
+x-coordinate of the baseline value of 'y'. For `ycoord`, a dataframe of y-coordinates is required with the 
+first column having the baseline value of 'y'. The baseline value defaults to the first column of the 
+y-coordinates but can be specified with the `ybase =` argument (we strongly suggest that users rely
+on the default using the first column of x- and y-coordinates). The `arse` function only calculates the
+area below the baseline; any points above the baseline (i.e., growth) are set to the baseline level to only calculate 
+the area beneath the baseline. The `arse` function, as well as the related ARSE functions, will provide interpolation 
+points for x-coordinates where the line between two points crosses the baseline at a point not measured in the data
+(using a function analogous to the `getintersectx` function in the `arse` package (see help for more details). 
+In the example below, the first row of the dataframe is selected with the corresponding columns for the x- and 
+y-coordinates. To calculate ARSE, an implementation of the shoelace formula (Gauss's area formula) for the area 
+of irregular polygons is used with the (`polyarea()`) function from the `pracma` package.
+
+The `arse` function also has two additional arguments that can be specified: `yinvert` and `saveout`. 
+The `yinvert` argument can be used to calculate ARSE depending on how the range of values of 'y' are to be 
+interpreted. By default, `yinvert = FALSE` and assumes that higher values of 'y' are more desirable or positive.
+However, if higher values of 'y' are not desireable and lower values are, then `yinvert = TRUE` will calculate
+ARSE assuming that values above the baseline represent resilience and values below the baseline represent growth.
+Lastly, the `saveout` argument is set to FALSE by default and will just return a vector of values for the ARSE
+calculation. When set to TRUE, `saveout` will return the original dataframe and add a column of the calculated
+ARSE values. 
+
+```{r}
+# Returns area of resilience to stress event (ARSE) for single subject
+arse(data = stress_appraisal, xcoord = stress_appraisal[1, 3:7], ycoord = stress_appraisal[1, 8:12])
+```
+
+### The result of ARSE 
+
+The function returns an ARSE value of 87.5. This area was calculated by using the x- and y-coordinates that form
+an irregular polygon. Since resilience was not achieved in this example (i.e., the end state value did not return
+or exceed the baseline), an additional point is interpolated at the same x-coordinate as the end state value with
+a y-coordinate value at the baseline (i.e., x = 4, y = 64). Doing so completes the appropriate shape to calculate ARSE. 
+
+## Calculating AoG for Subject #4
+
+In some cases, users may want to know how much growth a subject might have experienced (see plot below). 
+
+```{r}
+# Plot of area of growth (AoG) for single subject
+plot_arse(xcoord = as.integer(stress_appraisal[4,3:7]), ycoord = as.integer(stress_appraisal[4, 8:12]), 
+          ll=0, ul=100, xlab = "Trial Number", ylab = "Number of Pegs")
+```
+
+The plot shows that Subject #4 experienced growth (i.e., 'y' values above the baseline) after the incursion of a 
+stress event. 
+
+To calculate areas of growth, the `aog` function is used. This function is exactly the same as the `arse` function 
+above except that instead of setting values above the baseline to the baseline, `aog` sets values below the baseline
+to the baseline to only look at the area above the baseline. 
+
+```{r}
+# Returns area of growth (AoG) value for single subject
+aog(data = stress_appraisal, xcoord = stress_appraisal[4, 3:7], ycoord = stress_appraisal[4, 8:12])
+# Returns area of resilience to stress event (ARSE) value for single subject
+arse(data = stress_appraisal, xcoord = stress_appraisal[4, 3:7], ycoord = stress_appraisal[4, 8:12])
+```
+
+### The Result of AoG and ARSE
+
+The result of `aog` returns a value of 25.58 indicating the area of growth for Subject #4. However, since the
+subject had an end state value below the baseline (t4y = 61), `arse` can also be calculated and return a value
+of 0.08. In this case, more growth was achieved for the subject with a small area of resilience, indicating a 
+good response to the stress event. 
+
+## Calculating ARSE~T~ for Subject #4
+
+In some cases, users may want to take into account both resilience and growth. There is also a function, `arse_t`,
+that calculates the area of resilience (`arse`) and area of growth (`aog`) and takes their difference 
+(i.e., $ARSE_T = ARSE - AoG$) to get a total area value for resilience. In these cases, ARSE can be positive and negative 
+depending on whether the area of resilience or area of growth is larger. 
+
+```{r}
+# Returns area of resilience to stress event total (ARSE_T) value for single subject
+arse_t(data = stress_appraisal, xcoord = stress_appraisal[4, 3:7], ycoord = stress_appraisal[4, 8:12])
+```
+
+### The result of ARSE~T~
+
+The result of `arse_t` returns a value of -25.5 which reflects the subtraction of ARSE (0.08) from AoG (25.58). 
+A negative returned value indicates that the area of growth was larger than the area of resilience. 
+
+## Calculating ARSE~S~ for Subject #1
+
+In some cases, users may want to account for the end state being above the baseline (growth) or below the 
+the baseline (non-resilience). The `arse_s` function provides a scaling factor that accounts for the end
+state where $ARSE_S = ARSE * (Baseline/End State)$. When the end state is below the baseline, the scaling 
+factor will make ARSE larger and when the end state is above the baseline, the scaling factor will 
+make ARSE smaller.
+
+```{r}
+# Returns area of resilience to stress event scaled (ARSE_S) value for single subject
+arse_s(data = stress_appraisal, xcoord = stress_appraisal[1, 3:7], ycoord = stress_appraisal[1, 8:12])
+```
+
+### The Result of ARSE~S~
+
+The result of `arse_s` returns a value of 119.15. Recall that the `arse` value for this subject was 87.5 with
+a baseline value of 64 and an end state value of 47. Thus, $ARSE_S = 87.5 * (64/47)$ or $ARSE_S = 87.5 * 1.36$ 
+which returns a larger area (vs. the un-scaled ARSE) of 119.15. 
+
+## Calculating ARSE~TS~ for Subject #4
+
+In some cases, users may want to account for both growth and the end state value; the `arse_ts` function combines
+aspects of both `arse_t` and `arse_s`. Specifically, `arse_ts` is calculated as follows: for `arse_t` values that 
+are >= 0, $ARSE_T._S = ARSE_T * (Baseline/End State)$ while for `arse_t` values that are < 0, 
+$ARSE_T._S = ARSE_T * (End State/Baseline)$. The two different calculations are needed to account for scaling positive
+and negative values of `arse_t`. For instance, if `arse_t` is negative and the the end state is above the 
+baseline, then the end state value needs to be in the numerator so that the scaling factor can make a negative 
+value larger (versus smaller when `arse_t` is zero or positive).
+
+```{r}
+# Returns area of resilience to stress event total scaled (ARSE_TS) for single subject
+arse_ts(data = stress_appraisal, xcoord = stress_appraisal[4, 3:7], ycoord = stress_appraisal[4, 8:12])
+```
+
+### The Result of ARSE~TS~
+
+The result of `arse_ts` returns a value of -25.09. Recall that `arse_t` for this subject was -25.5 with
+a baseline of 62 and an end state of 61. Thus, $ARSE_T._S = -25.5 * (61/62)$ or $ARSE_TS = -25.5 * (0.98)$
+which returns a smaller negative value (vs. un-scaled ARSE~T~) of -25.09.
+
+## Calculating ARSE for Entire Sample
+
+Calculation of `arse` and the ARSE family of functions for the entire sample is the same as for individual
+cases. 
+
+```{r}
+# Returns area of resilience to stress event (ARSE) for entire sample with modified data set including calculated ARSE values 
+print(arse(data = stress_appraisal, xcoord = stress_appraisal[3:7], ycoord = stress_appraisal[8:12], saveout = TRUE), digits = 2)
+```
+
+## Calculating ARSE~T~ for Entire Sample
+
+```{r}
+# Returns area of resilience to stress event total (ARSE_T) for entire sample with modified data set including calculated ARSE_T values 
+arse_t(data = stress_appraisal, xcoord = stress_appraisal[3:7], ycoord = stress_appraisal[8:12], saveout = TRUE)
+```
+
+## Calculating ARSE~S~ for Entire Sample
+
+```{r}
+# Returns area of resilience to stress event scaled (ARSE_S) for entire sample with modified data set including calculated ARSE_S values 
+print(arse_s(data = stress_appraisal, xcoord = stress_appraisal[3:7], ycoord = stress_appraisal[8:12], saveout = TRUE), digits = 2)
+```
+
+## Calculating ARSE~TS~ for Entire Sample
+
+```{r}
+# Returns area of resilience to stress event total scaled (ARSE_TS) for entire sample with modified data set including calculated ARSE_TS values 
+print(arse_ts(data = stress_appraisal, xcoord = stress_appraisal[3:7], ycoord = stress_appraisal[8:12], saveout = TRUE), digits = 3)
+```
+
+## Calculating ARSE~TS~ for Entire Sample and Comparing Groups with a *t*-test
+
+In this example, we first calculate values of `arse_ts` for the entire sample and create a new column 'arse_ts' by saving
+the new dataframe as a new object 'data1'. Second, we perform a *t*-test by comparing the control and appraisal_training 
+groups under the 'group' factor.
+
+```{r}
+# Returns area of resilience to stress event total scaled (ARSE_TS) for entire sample with modified data set including calculated ARSE_TS values 
+data1 <- arse_ts(data = stress_appraisal, xcoord = stress_appraisal[3:7], ycoord = stress_appraisal[8:12], saveout = TRUE)
+t.test(data1$arse_ts ~ data1$group)
+```
+
+```{r}
+# Boxplot of two group conditions
+boxplot(data1$arse_ts~data1$group, data = data1,
+   xlab="Trials", ylab="Number of Pegs") 
+```
+
+### The Result of *t*-test comparing the Control Group to Appraisal Training Group
+
+The result of the *t*-test reveals a significant difference between the two groups at an alpha level of 0.05. 
+Specifically, subjects in the appraisal training condition had smaller ARSE~TS~ values (*M* = 21.27) compared 
+to the control condition (*M* = 109.92). 
+
+### Plotting ARSE of Control Group Using Mean Values of Y-Coordinates
+
+```{r}
+# Plots the mean values of 'y' across x-coordinates for the control group
+stress_appraisal_group <- subset(stress_appraisal, group == "Control", select = c("subj", "group", "tbx", "t1x", "t2x", "t3x", "t4x", "tby", "t1y", "t2y", "t3y", "t4y"))
+plot_arse(xcoord = as.integer(stress_appraisal_group[1,3:7]), 
+    ycoord = c(mean(stress_appraisal_group[,8]),mean(stress_appraisal_group[,9]),mean(stress_appraisal_group[,10]),
+               mean(stress_appraisal_group[,11]), mean(stress_appraisal_group[,12])), 
+              ll=0, ul=100, xlab = "Trial Number", ylab = "Number of Pegs")
+```
+
+The plot above reflects the mean values of the 'y' variable at each time interval to show the average 
+shape of the ARSE for subjects in the control condition.
+
+### Plotting ARSE of Appraisal Training Group Using Mean Values of Y-Coordinates
+
+```{r}
+# Plots the mean values of 'y' across the x-coordinates for the appraisal training group
+stress_appraisal_group <- subset(stress_appraisal, group == "Appraisal_Training", select = c("subj", "group", "tbx", "t1x", "t2x", "t3x", "t4x", "tby", "t1y", "t2y", "t3y", "t4y"))
+plot_arse(xcoord = as.integer(stress_appraisal_group[1,3:7]), 
+    ycoord = c(mean(stress_appraisal_group[,8]),mean(stress_appraisal_group[,9]),mean(stress_appraisal_group[,10]),
+               mean(stress_appraisal_group[,11]), mean(stress_appraisal_group[,12])), 
+              ll=0, ul=100, xlab = "Trial Number", ylab = "Number of Pegs")
+```
+
+The plot above reflects the mean values of the 'y' variable at each time interval to show the average 
+shape of the ARSE for subjects in the appraisal training condition.
+
+
+
+## References
+
+Ratcliff, N. J., Nair, D. T., & Goldstein, J. R. (*under review*). The Area of Resilience to Stress Event (ARSE): 
+    A New Conceptual Clarification and Method for Quantifying the Process of Resilience.
